@@ -1,4 +1,11 @@
 from PIL import Image
+import os
+import base64
+import ntpath
+
+def filename(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)
 
 def add_bit(byte, bit):
     if bit:
@@ -28,13 +35,17 @@ def chunks(l, n):
     for i in range(0, len(l), n):
         yield l[i:i + n]
 
+def file_to_txt(path):
+    with open(path, 'rb') as f:
+        content = f.read()
+    return base64.b64encode(content)
 
+def txt_to_file(txt, path):
+    with open(path, 'wb') as f:
+        f.write(txt.decode('base64'))
 
-if __name__ == '__main__':
-    with open('HumanRights.txt', 'r') as f:
-        txt_msg = f.read()
-    
-    im = Image.open("images.png")
+def write_txt(txt_msg, path, altered_path):
+    im = Image.open(path)
     im = im.convert('RGB')
     width, height = im.size
     pix = im.load()
@@ -53,9 +64,10 @@ if __name__ == '__main__':
     for i, pixel in enumerate(altered):
         pix[index_dict[i]] = tuple(pixel)
     print 'Saving image...'
-    im.save("images_altered.png")
-    
-    print 'Saved\n'
+    im.save(altered_path)
+    print 'Saved'
+
+def read_txt(path):
     im = Image.open("images_altered.png")
     im = im.convert('RGB')
     width, height = im.size
@@ -88,4 +100,26 @@ if __name__ == '__main__':
         else:
             break
         tot = 0
+    return message
+
+def write_file(src_path, target_path, altered_target_path):
+    txt = file_to_txt(src_path)
+    txt = '{{{&&filename %s&&}}}%s'%(filename(src_path), txt)
+    write_txt(txt, target_path, altered_target_path)
+
+def read_file(altered_path, target_directory):
+    txt = read_txt(altered_path)
+    if txt.find('{{{&&filename ') == -1:
+        raise Exception('The message found is no file')
+    else:
+        end = txt.find('&&}}}')
+        target_file_name = txt[len('{{{&&filename '):end]
+        encoded_content = txt[end+len('&&}}}'):]
+        target_path = os.path.join(target_directory, target_file_name)
+        txt_to_file(encoded_content, target_path)
+
+if __name__ == '__main__':
+    write_file("C:\Users\Markus\Downloads\mini.jpg", "images.png", "images_altered.png")
+    read_file("images_altered.png", "")
+    
     
