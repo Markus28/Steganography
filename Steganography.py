@@ -1,7 +1,39 @@
 from PIL import Image
+import numpy as np
+import matplotlib.pyplot as plt
 import os
 import base64
 import ntpath
+import StringIO
+from Crypto.Cipher import AES
+from Crypto import Random
+import hashlib
+
+class AESCipher(object):
+
+    def __init__(self, key): 
+        self.bs = 32
+        self.key = hashlib.sha256(key.encode()).digest()
+
+    def encrypt(self, raw):
+        raw = self._pad(raw)
+        iv = Random.new().read(AES.block_size)
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return base64.b64encode(iv + cipher.encrypt(raw))
+
+    def decrypt(self, enc):
+        enc = base64.b64decode(enc)
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        return self._unpad(cipher.decrypt(enc[AES.block_size:])).decode('utf-8')
+
+    def _pad(self, s):
+        return s + (self.bs - len(s) % self.bs) * chr(self.bs - len(s) % self.bs)
+
+    @staticmethod
+    def _unpad(s):
+        return s[:-ord(s[len(s)-1:])]
+    
 
 def filename(path):
     head, tail = ntpath.split(path)
@@ -68,7 +100,7 @@ def write_txt(txt_msg, path, altered_path):
     print 'Saved'
 
 def read_txt(path):
-    im = Image.open("images_altered.png")
+    im = Image.open(path)
     im = im.convert('RGB')
     width, height = im.size
     pix = im.load()
@@ -102,24 +134,50 @@ def read_txt(path):
         tot = 0
     return message
 
-def write_file(src_path, target_path, altered_target_path):
+def write_encrypted_txt(txt_msg, path, altered_path, key=""):
+    c = AESCipher(key)
+    encrypted_msg = c.encrypt(txt_msg)
+    write_txt(encrypted_msg, path, altered_path)
+
+def read_encrypted_txt(path, key=""):
+    encrypted_msg = read_txt(path)
+    c = AESCipher(key)
+    return c.decrypt(encrypted_msg)
+
+def write_file(src_path, target_path, altered_target_path, key=""):
     txt = file_to_txt(src_path)
     txt = '{{{&&filename %s&&}}}%s'%(filename(src_path), txt)
-    write_txt(txt, target_path, altered_target_path)
+    write_encrypted_txt(txt, target_path, altered_target_path, key)
 
-def read_file(altered_path, target_directory):
-    txt = read_txt(altered_path)
+def read_file_content(altered_path, key=""):
+    txt = read_encrypted_txt(altered_path, key)
     if txt.find('{{{&&filename ') == -1:
         raise Exception('The message found is no file')
     else:
         end = txt.find('&&}}}')
         target_file_name = txt[len('{{{&&filename '):end]
         encoded_content = txt[end+len('&&}}}'):]
-        target_path = os.path.join(target_directory, target_file_name)
-        txt_to_file(encoded_content, target_path)
+        return encoded_content, target_file_name
+    
+def read_file(altered_path, target_directory, key=""):
+    encoded_content, target_file_name = read_file_content(altered_path, key)
+    target_path = os.path.join(target_directory, target_file_name)
+    txt_to_file(encoded_content, target_path)
+
+def show_image(altered_path, key=""):
+    encoded_content, file_name = read_file_content(altered_path, key)
+    content = encoded_content.decode('base64')
+    encoded_content = None
+    buff = StringIO.StringIO()
+    buff.write(content)
+    buff.seek(0)
+    im = Image.open(buff)
+    imgplot = plt.imshow(im)
+    plt.title(file_name)
+    plt.show()
+    
 
 if __name__ == '__main__':
-    write_file("C:\Users\Markus\Downloads\mini.jpg", "images.png", "images_altered.png")
-    read_file("images_altered.png", "")
-    
+    write_file('small_galaxy.jpg', 'images.png', 'images_altered.png', 'pass')
+    read_file('images_altered.png', '', 'pass')
     
