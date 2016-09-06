@@ -15,9 +15,13 @@ import time
 import numpy as np
 from scipy.io import wavfile
 import subprocess
+from shutil import copyfile
+import contextlib
+import signal
+
+
 
 class AESCipher(object):
-
     def __init__(self, key): 
         self.bs = 32
         self.key = hashlib.sha256(key.encode()).digest()
@@ -245,8 +249,9 @@ class VideoWriter(object):
             raise IndexError('Target too small')
         msg = chunks(msg, max_info)
         for i, fragment in enumerate(msg):
-            writer = ImageWriter('C:\Users\Markus\AppData\Local\Temp\\frame%d.png'%i, 'C:\Users\Markus\AppData\Local\Temp\\frame%d.png'%i)
-            writer.write_txt(fragment, header=False)
+            with silent_print():
+                writer = ImageWriter('C:\Users\Markus\AppData\Local\Temp\\frame%d.png'%i, 'C:\Users\Markus\AppData\Local\Temp\\frame%d.png'%i)
+                writer.write_txt(fragment, header=False)
 
         print 'Creating Video, %d frames'%count
         img1 = cv2.imread('C:\Users\Markus\AppData\Local\Temp\\frame0.png')
@@ -261,13 +266,18 @@ class VideoWriter(object):
         cv2.destroyAllWindows()
         video.release()
 
-        #TODO if fails, copy temporary file
-        b = subprocess.Popen('ffmpeg -i %s -ab 160k -ac 2 -ar 44100 -vn %s -y'%(self.source, 'C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav'), stderr = subprocess.STDOUT, stdout = subprocess.PIPE, shell = True)
-        print b.stdout.read()
-        a = subprocess.Popen('ffmpeg -i %s -i %s -codec copy -shortest %s -y'%('C:\Users\Markus\AppData\Local\Temp\\steg_video.avi', 'C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav', os.path.abspath(self.target)), stdout = subprocess.PIPE, stderr = subprocess.STDOUT, shell = True)
-        print a.stdout.read()
-        srm('C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav')
-        srm('C:\Users\Markus\AppData\Local\Temp\\steg_video.avi')
+        try:
+            print subprocess.check_output('ffmpeg -i %s -ab 160k -ac 2 -ar 44100 -vn %s -y'%(self.source, 'C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav'), stderr = subprocess.STDOUT, shell = True)        
+            print subprocess.check_output('ffmpeg -i %s -i %s -codec copy -shortest %s -y'%('C:\Users\Markus\AppData\Local\Temp\\steg_video.avi', 'C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav', os.path.abspath(self.target)), stderr = subprocess.STDOUT, shell = True)
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write('Warning: Could not transfer audiodata from original video. %s Did you install ffmpeg properly?\n' %e.output)
+            copyfile('C:\Users\Markus\AppData\Local\Temp\\steg_video.avi', self.target)
+
+        try:
+            srm('C:\Users\Markus\AppData\Local\Temp\\steg_audio.wav')
+            srm('C:\Users\Markus\AppData\Local\Temp\\steg_video.avi')
+        except  IOError:
+            pass
 
 
     def write_file(self, src_path, key=""):
@@ -429,6 +439,14 @@ class ImageReader(object):
         print 'Done\n'
 
 
+
+@contextlib.contextmanager
+def silent_print():
+    actual_stdout = sys.stdout
+    sys.stdout = StringIO.StringIO()
+    yield
+    sys.stdout = actual_stdout
+    
 def txt_to_image(content, name='figure'):
         buff = StringIO.StringIO()
         buff.write(content)
